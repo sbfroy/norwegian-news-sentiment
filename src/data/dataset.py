@@ -1,13 +1,14 @@
 import torch
 from torch.utils.data import Dataset
 
+
 class TokenizedDataset(Dataset):
     def __init__(self, df, tokenizer, max_len):
-        self.tokenizer = tokenizer 
+        self.tokenizer = tokenizer
         self.texts = df['text'].values
-        self.labels = df['score'].values.astype(float)  
+        self.labels = df['score'].values.astype(float)
         self.max_len = max_len
-    
+
     def __len__(self):
         return len(self.texts)
 
@@ -15,7 +16,6 @@ class TokenizedDataset(Dataset):
         text = self.texts[idx]
         label = self.labels[idx]
 
-        # tokenIDs
         encoding = self.tokenizer(
             text,
             add_special_tokens=True,
@@ -26,8 +26,7 @@ class TokenizedDataset(Dataset):
             return_attention_mask=True,
             return_tensors='pt'
         )
-        
-        # return dict with input_ids, attention_mask, and labels
+
         return {
             'input_ids': encoding['input_ids'].squeeze(0),
             'attention_mask': encoding['attention_mask'].squeeze(0),

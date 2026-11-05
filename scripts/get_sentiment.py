@@ -1,34 +1,38 @@
+"""Score news articles from Norsk Aviskorpus with the fine-tuned NB-BERT model."""
 import sys
-import os
+from pathlib import Path
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
+import pandas as pd
 import torch
+from tqdm import tqdm
 from transformers import AutoTokenizer
+
+base_dir = Path(__file__).resolve().parent.parent
+sys.path.append(str(base_dir))
+
 from src.models.transformer_model import TransformerModel
 from src.utils.config_loader import load_config
-import pandas as pd 
-from pathlib import Path
-from tqdm import tqdm
 
-base_dir = Path(__file__).parent.parent
+PRETRAINED_NAME = 'NbAiLab/nb-bert-base'
 
 config = load_config(base_dir / 'transformer_params.yaml')
-
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-tokenizer = AutoTokenizer.from_pretrained('NbAiLab/nb-bert-base')
+tokenizer = AutoTokenizer.from_pretrained(PRETRAINED_NAME)
 
 model = TransformerModel(
-    transformer_name='NbAiLab/nb-bert-base',
+    transformer_name=PRETRAINED_NAME,
     dropout=config['model']['dropout']
 )
 
-model.load_state_dict(torch.load(base_dir / 'src' /'models' / 'transformer_model.pth', weights_only=True)) 
+weights_path = base_dir / 'src' / 'models' / 'transformer_model.pth'
+model.load_state_dict(torch.load(weights_path, map_location=device, weights_only=True))
+model.to(device)
 model.eval()
 
-def get_sentiment(text):
 
+def get_sentiment(text):
+    """Return a sentiment score in roughly [-1, 1] for a single text."""
     encoding = tokenizer(
         text,
         add_special_tokens=True,
@@ -44,20 +48,19 @@ def get_sentiment(text):
     attention_mask = encoding['attention_mask'].to(device)
 
     with torch.no_grad():
-        output = model(input_ids, attention_mask).squeeze()
-        
-    return output
+        output = model(input_ids, attention_mask)
 
-input = base_dir / 'data' / 'all_articles_from_norsk_aviskorpus.csv' 
-output = base_dir / 'data' / 'all_articles_with_sentiment.csv'
+    return output.item()
 
-data = pd.read_csv(input)
+
+input_path = base_dir / 'data' / 'all_articles_from_norsk_aviskorpus.csv'
+output_path = base_dir / 'data' / 'all_articles_with_sentiment.csv'
+
+data = pd.read_csv(input_path)
 
 tqdm.pandas()
+data['score'] = data['text'].progress_apply(get_sentiment)
 
-data['score'] = data['text'].progress_apply(get_sentiment) # Score column
+data[['id', 'date', 'paper', 'score']].to_csv(output_path, index=False)
 
-result_data = data[['id', 'date', 'paper', 'score']]
-result_data.to_csv(output, index=False)
-
-print(f"Done! Results saved in {output}")
+print(f"Done! Results saved in {output_path}")
